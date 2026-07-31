@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>TULARI Scanner</title>
+<script src="https://unpkg.com/html5-qrcode"></script>
+<style>
+body{font-family:Arial;text-align:center;padding:20px;background:#111827;color:white;}
+#reader{width:100%;max-width:400px;margin:20px auto;}
+#result{font-size:16px;margin-top:20px;}
+button{padding:12px 20px;font-size:16px;border-radius:8px;border:none;background:#2563eb;color:white;cursor:pointer;}
+</style>
+</head>
+<body>
+
+<h2>📷 TULARI QR Scanner</h2>
+<p id="status">Arahkan kamera ke QR Code peserta</p>
+
+<div id="reader"></div>
+<div id="result"></div>
+
+<script>
+
+const scanner = new Html5Qrcode("reader");
+
+scanner.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: 250 },
+    function(decodedText){
+
+        document.getElementById("status").innerHTML = "Berhasil scan: " + decodedText;
+
+        scanner.stop();
+
+        if(window.opener){
+            window.opener.postMessage({ type:"TULARI_QR_SCAN", data:decodedText }, "*");
+        }
+
+        document.getElementById("result").innerHTML =
+            "<button onclick='window.close()'>Tutup & Kembali</button>";
+
+    },
+    function(error){}
+);
+
+</script>
+
+</body>
+</html>
