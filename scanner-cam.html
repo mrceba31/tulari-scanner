@@ -2,24 +2,55 @@
 <html>
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>TULARI Scanner</title>
 <script src="https://unpkg.com/html5-qrcode"></script>
 <style>
-body{font-family:Arial;text-align:center;padding:20px;background:#111827;color:white;}
-#reader{width:100%;max-width:400px;margin:20px auto;}
-#result{font-size:16px;margin-top:20px;}
-button{padding:12px 20px;font-size:16px;border-radius:8px;border:none;background:#2563eb;color:white;cursor:pointer;}
+
+html,body{
+    margin:0;
+    padding:0;
+    height:100%;
+    background:#000;
+    overflow:hidden;
+}
+
+#reader{
+    width:100vw !important;
+    height:100vh !important;
+}
+
+#reader video{
+    width:100% !important;
+    height:100% !important;
+    object-fit:cover !important;
+}
+
+#status{
+    position:fixed;
+    top:0;
+    left:0;
+    right:0;
+    padding:16px;
+    text-align:center;
+    color:white;
+    font-family:Arial;
+    font-size:16px;
+    z-index:50;
+    background:rgba(0,0,0,.5);
+}
+
 </style>
 </head>
 <body>
 
-<h2>📷 TULARI QR Scanner</h2>
-<p id="status">Arahkan kamera ke QR Code peserta</p>
+<div id="status">📷 Arahkan kamera ke QR Code peserta</div>
 
 <div id="reader"></div>
-<div id="result"></div>
 
 <script>
+
+let hasScanned = false;
 
 const scanner = new Html5Qrcode("reader");
 
@@ -28,7 +59,11 @@ scanner.start(
     { fps: 10, qrbox: 250 },
     function(decodedText){
 
-        document.getElementById("status").innerHTML = "Berhasil scan: " + decodedText;
+        if(hasScanned) return;
+
+        hasScanned = true;
+
+        document.getElementById("status").innerHTML = "✅ Berhasil scan: " + decodedText + " — menutup...";
 
         scanner.stop();
 
@@ -36,11 +71,9 @@ scanner.start(
             window.opener.postMessage({ type:"TULARI_QR_SCAN", data:decodedText }, "*");
         }
 
-        document.getElementById("status").innerHTML = "✅ Berhasil scan: " + decodedText + " — menutup otomatis...";
-
-setTimeout(function(){
-    window.close();
-}, 1200);
+        setTimeout(function(){
+            window.close();
+        }, 1200);
 
     },
     function(error){}
