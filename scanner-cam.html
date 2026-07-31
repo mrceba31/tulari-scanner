@@ -32,14 +32,15 @@ scanner.start(
 
         scanner.stop();
 
-        if(window.opener){
-            window.opener.postMessage({ type:"TULARI_QR_SCAN", data:decodedText }, "*");
-        }
+       if(window.opener){
+    window.opener.postMessage({ type:"TULARI_QR_SCAN", data:decodedText }, "*");
+}
 
-        document.getElementById("result").innerHTML =
-            "<button onclick='window.close()'>Tutup & Kembali</button>";
+document.getElementById("status").innerHTML = "✅ Berhasil scan: " + decodedText + " — menutup otomatis...";
 
-    },
+setTimeout(function(){
+    window.close();
+}, 1200);
     function(error){}
 );
 
