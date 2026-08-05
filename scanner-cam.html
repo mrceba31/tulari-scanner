@@ -6,51 +6,32 @@
 <title>TULARI Scanner</title>
 <script src="https://unpkg.com/html5-qrcode"></script>
 <style>
-
-html,body{
-    margin:0;
-    padding:0;
-    height:100%;
-    background:#000;
-    overflow:hidden;
-}
-
-#reader{
-    width:100vw !important;
-    height:100vh !important;
-}
-
-#reader video{
-    width:100% !important;
-    height:100% !important;
-    object-fit:cover !important;
-}
-
-#status{
-    position:fixed;
-    top:0;
-    left:0;
-    right:0;
-    padding:16px;
-    text-align:center;
-    color:white;
-    font-family:Arial;
-    font-size:16px;
-    z-index:50;
-    background:rgba(0,0,0,.5);
-}
-
+html,body{margin:0;padding:0;height:100%;background:#000;overflow:hidden;}
+#reader{width:100vw !important;height:100vh !important;}
+#reader video{width:100% !important;height:100% !important;object-fit:cover !important;}
+#status{position:fixed;top:0;left:0;right:0;padding:14px;text-align:center;color:white;font-family:Arial;font-size:15px;z-index:50;background:rgba(0,0,0,.55);transition:background .15s ease;}
+#status.flash{background:rgba(16,163,74,.75);}
+#counter{position:fixed;top:52px;left:0;right:0;text-align:center;color:#fff;font-family:Arial;font-size:12px;z-index:50;opacity:.85;}
+#btnClose{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:50;background:#DC2626;color:#fff;border:none;padding:12px 22px;border-radius:999px;font-family:Arial;font-size:14px;font-weight:600;}
 </style>
 </head>
 <body>
 
 <div id="status">📷 Arahkan kamera ke QR Code peserta</div>
-
+<div id="counter">0 peserta terscan</div>
 <div id="reader"></div>
+<button id="btnClose" onclick="tutupScanner()">✕ Selesai / Tutup Kamera</button>
 
 <script>
 
-let hasScanned = false;
+// Kamera TIDAK berhenti setelah 1x scan lagi. Debounce PER BIB sepenuhnya
+// ditangani di parent window (Scanner_js.html). Di sini cuma anti-flood
+// ringan supaya QR yg SAMA tidak spam postMessage selagi masih di depan lensa.
+
+const LOCAL_FLOOD_GUARD_MS = 1200;
+let lastCodeText = null;
+let lastCodeTime = 0;
+let totalScanned = 0;
 
 const scanner = new Html5Qrcode("reader");
 
@@ -59,25 +40,41 @@ scanner.start(
     { fps: 10, qrbox: 250 },
     function(decodedText){
 
-        if(hasScanned) return;
+        const now = Date.now();
 
-        hasScanned = true;
+        if(decodedText === lastCodeText && (now - lastCodeTime) < LOCAL_FLOOD_GUARD_MS){
+            return;
+        }
 
-        document.getElementById("status").innerHTML = "✅ Berhasil scan: " + decodedText + " — menutup...";
+        lastCodeText = decodedText;
+        lastCodeTime = now;
+        totalScanned++;
 
-        scanner.stop();
+        const statusEl = document.getElementById("status");
+        statusEl.innerHTML = "✅ Terbaca: " + decodedText;
+        statusEl.classList.add("flash");
+        setTimeout(function(){ statusEl.classList.remove("flash"); }, 350);
+
+        document.getElementById("counter").innerHTML = totalScanned + " peserta terscan";
+
+        if(navigator.vibrate) navigator.vibrate(80);
 
         if(window.opener){
             window.opener.postMessage({ type:"TULARI_QR_SCAN", data:decodedText }, "*");
         }
 
+        // kamera TETAP JALAN, siap scan bib berikutnya tanpa jeda
         setTimeout(function(){
-            window.close();
-        }, 1200);
+            statusEl.innerHTML = "📷 Arahkan kamera ke QR Code peserta";
+        }, 900);
 
     },
     function(error){}
 );
+
+function tutupScanner(){
+    scanner.stop().catch(function(){}).finally(function(){ window.close(); });
+}
 
 </script>
 
