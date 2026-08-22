@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>TULARI - Scan QR BIB</title>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<style>
+  :root{
+    --mint: #16b995;
+    --mint-dark: #0d3b30;
+    --ink: #101418;
+  }
+  *{ box-sizing:border-box; }
+  html,body{
+    margin:0; padding:0; height:100%;
+    background:#000;
+    font-family:'Inter', system-ui, sans-serif;
+    overflow:hidden;
+  }
+  .wrap{
+    position:fixed; inset:0;
+    display:flex; flex-direction:column;
+  }
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 16px;
+    background:rgba(0,0,0,0.6);
+    color:#f4efe1;
+    z-index:3;
+  }
+  .topbar span{ font-weight:800; font-size:15px; }
+  .topbar button{
+    width:38px; height:38px; border-radius:50%;
+    border:1px solid rgba(255,255,255,0.3);
+    background:rgba(255,255,255,0.1);
+    color:#f4efe1; font-size:16px; cursor:pointer;
+  }
+  .video-wrap{
+    position:relative; flex:1;
+    display:flex; align-items:center; justify-content:center;
+    overflow:hidden; background:#000;
+  }
+  video{ width:100%; height:100%; object-fit:cover; }
+  .frame{
+    position:absolute;
+    width:min(72vw, 340px); height:min(72vw, 340px);
+    border:3px solid var(--mint);
+    border-radius:18px;
+    box-shadow:0 0 0 9999px rgba(0,0,0,0.35);
+    pointer-events:none;
+  }
+  .status{
+    text-align:center; padding:16px;
+    color:#f4efe1; font-weight:700; font-size:14px;
+    background:rgba(0,0,0,0.6);
+    min-height:52px; z-index:3;
+  }
+  .status.ok{ color:#4ade80; }
+  .status.error{ color:#f87171; }
+  .manual{
+    display:flex; gap:8px; padding:0 14px 14px; background:rgba(0,0,0,0.6);
+  }
+  .manual input{
+    flex:1; padding:10px 12px; border-radius:8px; border:1px solid #374151;
+    background:#111827; color:#f4efe1; font-size:15px;
+  }
+  .manual button{
+    padding:10px 16px; border-radius:8px; border:none;
+    background:var(--mint); color:var(--mint-dark); font-weight:700; cursor:pointer;
+  }
+  canvas{ display:none; }
+</style>
+</head>
+<body>
+
+  <div class="wrap">
+
+    <div class="topbar">
+      <span>📷 Scan QR BIB Peserta</span>
+      <button onclick="window.close()" title="Tutup">✕</button>
+    </div>
+
+    <div class="video-wrap">
+      <video id="qrVideo" playsinline autoplay muted></video>
+      <div class="frame"></div>
+    </div>
+
+    <div class="status" id="statusEl">Membuka kamera...</div>
+
+    <!-- Fallback kalau kamera gagal / tidak tersedia -->
+    <div class="manual">
+      <input type="text" id="manualBib" placeholder="Atau ketik BIB manual, lalu Enter">
+      <button onclick="sendManual()">Kirim</button>
+    </div>
+
+    <canvas id="qrCanvas"></canvas>
+
+  </div>
+
+<script>
+
+  // ============================================================
+  // GANTI SESUAI DEPLOYMENT APPS SCRIPT ANDA
+  // Origin dari mana halaman ini boleh dibuka & ke mana hasil
+  // scan boleh dikirim balik lewat postMessage.
+  // Semua deployment Apps Script (exec) selalu di origin ini:
+  // ============================================================
+  var TARGET_ORIGIN = "https://script.google.com";
+
+  var qrVideo   = document.getElementById("qrVideo");
+  var qrCanvas  = document.getElementById("qrCanvas");
+  var qrCtx     = qrCanvas.getContext("2d", { willReadFrequently: true });
+  var statusEl  = document.getElementById("statusEl");
+
+  var cameraStream   = null;
+  var scanLoopHandle = null;
+  var isActive       = false;
+
+  var lastSent   = null;
+  var lastSentAt = 0;
+  var COOLDOWN_MS = 4000; // jeda sebelum BIB yang sama boleh dikirim lagi
+
+  function setStatus(msg, kelas){
+    statusEl.textContent = msg;
+    statusEl.className = "status" + (kelas ? " " + kelas : "");
+  }
+
+  function sendToOpener(bib){
+    if(!window.opener){
+      setStatus("Halaman ini tidak dibuka dari TULARI Finish Card, tidak bisa mengirim hasil.", "error");
+      return;
+    }
+    window.opener.postMessage({ type: "TULARI_BIB_SCANNED", bib: bib }, TARGET_ORIGIN);
+    setStatus("BIB " + bib + " terkirim. Arahkan ke QR berikutnya...", "ok");
+  }
+
+  function sendManual(){
+    var val = document.getElementById("manualBib").value.trim();
+    if(!val){
+      setStatus("Ketik BIB dulu.", "error");
+      return;
+    }
+    document.getElementById("manualBib").value = "";
+    sendToOpener(val);
+  }
+
+  document.getElementById("manualBib").addEventListener("keyup", function(e){
+    if(e.key === "Enter") sendManual();
+  });
+
+  function handleScanned(value){
+    if(!value) return;
+    var now = Date.now();
+    if(value === lastSent && (now - lastSentAt) < COOLDOWN_MS) return;
+    lastSent = value;
+    lastSentAt = now;
+    if(navigator.vibrate) navigator.vibrate(80);
+    sendToOpener(value);
+  }
+
+  function scanLoop(){
+    if(!isActive) return;
+
+    if(qrVideo.readyState === qrVideo.HAVE_ENOUGH_DATA){
+      qrCanvas.width  = qrVideo.videoWidth;
+      qrCanvas.height = qrVideo.videoHeight;
+      qrCtx.drawImage(qrVideo, 0, 0, qrCanvas.width, qrCanvas.height);
+
+      var imageData = qrCtx.getImageData(0, 0, qrCanvas.width, qrCanvas.height);
+      var code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: "dontInvert"
+      });
+
+      if(code && code.data){
+        handleScanned(code.data.trim());
+      }
+    }
+
+    scanLoopHandle = requestAnimationFrame(scanLoop);
+  }
+
+  function tryOpen(constraintsList, i){
+    if(i >= constraintsList.length){
+      setStatus("Tidak bisa membuka kamera. Cek izin kamera browser, atau pakai input manual di bawah.", "error");
+      return;
+    }
+
+    navigator.mediaDevices.getUserMedia(constraintsList[i])
+      .then(function(stream){
+        cameraStream = stream;
+        qrVideo.srcObject = stream;
+        return qrVideo.play();
+      })
+      .then(function(){
+        isActive = true;
+        setStatus("Arahkan kamera ke QR code BIB peserta...", "");
+        scanLoopHandle = requestAnimationFrame(scanLoop);
+      })
+      .catch(function(err){
+        console.warn("getUserMedia gagal:", err.name, err.message);
+        if(err.name === "NotAllowedError" || err.name === "SecurityError"){
+          setStatus("Izin kamera ditolak. Izinkan akses kamera untuk halaman ini lalu muat ulang.", "error");
+          return;
+        }
+        tryOpen(constraintsList, i + 1);
+      });
+  }
+
+  window.addEventListener("beforeunload", function(){
+    if(cameraStream){
+      cameraStream.getTracks().forEach(function(t){ t.stop(); });
+    }
+  });
+
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    setStatus("Browser ini tidak mendukung akses kamera. Pakai input manual di bawah.", "error");
+  }else if(typeof jsQR === "undefined"){
+    setStatus("Library QR scanner gagal dimuat. Cek koneksi internet.", "error");
+  }else{
+    tryOpen([
+      { video: { facingMode: { ideal: "environment" } }, audio: false },
+      { video: true, audio: false }
+    ], 0);
+  }
+
+</script>
+</body>
+</html>
